@@ -1,3 +1,5 @@
+importScripts('local.js');
+
 var listItemTemplate
 =	'<li data-id="{{item_id}}" class="{{completed}}">'
 +		'<div class="view">'
@@ -24,7 +26,7 @@ local.worker.setServer(function (req, res, page) {
 
 	// Only accept HEAD and GET requests
 	if (req.method != 'HEAD' && req.method != 'GET') {
-		return res.writeHead(406, 'bad method').end();
+		return res.writeHead(405, 'bad method').end();
 	}
 
 	// Route by path

@@ -20,49 +20,37 @@
 		dispatch(req, res).always(console.log.bind(console, req));
 	});
 
-	/**
-	 * Sets up a brand new Todo list.
-	 *
-	 * @param {string} name The name of your new to do list.
-	 */
-	function Todo(name) {
-		/*
-		Load the view server into a Web Worker.
+	/*
+	Load the view server into a Web Worker.
 
-		ABOUT
-		local.spawnWorkerServer() first loads local.js into the worker from the given "bootstrapUrl". This is so
-		sandboxing policies can take place (an experimental feature).
+	ABOUT
+	local.spawnWorkerServer() the specified javascript file or data-uri into a worker. When loaded, the
+	worker is assigned an httpl:// address according to the script's filename. In this case, the worker
+	will be given the url `httpl://view.js`.
 
-		The target script path should be given relative to the bootstrapUrl. When loaded, the worker is assigned
-		an httpl:// address according to the script's filename. In this case, the worker will be given the url
-		`httpl://view.js`.
+	Note, any requests sent to httpl://view.js before it loads will be buffered and delivered when ready.
+	*/
+	local.spawnWorkerServer('js/view.js');
 
-		Note, any requests sent to httpl://view.js before it loads will be buffered and delivered when ready.
-		*/
-		local.spawnWorkerServer('view.js', { bootstrapUrl: 'js/local.js' });
+	/*
+	Load the storage and main app host into the document.
 
-		/*
-		Load the storage and main app host into the document.
+	ABOUT
+	local.addServer() can take a function, or an object that descends from local.Server.prototype. In the
+	latter case, a `config` object is added to the server with a `domain` attribute.
+	*/
+	local.addServer('storage', new app.Store('todos-localjs'));
+	local.addServer('todo', new app.Todo('httpl://storage', 'httpl://view.js'));
 
-		ABOUT
-		local.addServer() can take a function, or an object that descends from local.Server.prototype. In the
-		latter case, a `config` object is added to the server with a `domain` attribute.
-		*/
-		local.addServer('storage', new app.Store(name));
-		local.addServer('todo', new app.Host('httpl://storage', 'httpl://view.js'));
+	/*
+	Create an agent pointing toward the todo server.
 
-		/*
-		Create an agent pointing toward the application host server.
-
-		ABOUT
-		`this.api` is a headless browser pointing to 'httpl://todo'. Any requests dispatched from it can ignore
-		the `url` parameter. Using links in the response headers, `this.api` can find other URLs on the app host
-		and spawn agents to them as well.
-		*/
-		this.api = local.agent('httpl://todo');
-	}
-
-	var todo = new Todo('todos-localjs');
+	ABOUT
+	`api` is a headless browser pointing to 'httpl://todo'. Any requests dispatched from it can ignore
+	the `url` parameter. Using links in the response headers, `api` can find other URLs on the todo host
+	and spawn agents to them as well.
+	*/
+	var todoApi = local.agent('httpl://todo');
 
 	/**
 	 * Finds the model ID of the clicked DOM element and spawns an agent pointing to its resource.
@@ -86,7 +74,7 @@
 		This makes it possible to chain `follow()` calls to describe multiple navigations, then trigger resolution
 		as needed. If any parent agent fails to resolve, the error will propagate to the final child.
 		*/
-		return todo.api.follow({ rel: 'item', id: target.dataset.id });
+		return todoApi.follow({ rel: 'item', id: target.dataset.id });
 	}
 
 	// When the enter key is pressed fire the addItem method.
@@ -98,7 +86,7 @@
 
 			Note, we're assuming success and discarding the response, since the app host updates the UI.
 			*/
-			todo.api.post({ title: title, completed: 0 });
+			todoApi.post({ title: title, completed: 0 });
 			e.target.value = '';
 		}
 	});
@@ -130,11 +118,11 @@
 		// Send a CHECK or UNCHECK request to httpl://todo/active or httpl://todo/completed
 		var id = (e.target.checked) ? 'active' : 'completed';
 		var method = (e.target.checked) ? 'CHECK' : 'UNCHECK';
-		todo.api.follow({ rel: 'item', id: id }).dispatch({ method: method });
+		todoApi.follow({ rel: 'item', id: id }).dispatch({ method: method });
 	});
 
 	$$('#clear-completed').addEventListener('click', function () {
 		// Send a DELETE request to httpl://todo/completed
-		todo.api.follow({ rel: 'item', id: 'completed' }).dispatch({ method: 'DELETE' });
+		todoApi.follow({ rel: 'item', id: 'completed' }).dispatch({ method: 'DELETE' });
 	});
 })();

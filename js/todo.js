@@ -3,13 +3,13 @@
 	'use strict';
 
 	/**
-	 * Takes a model server and view server and acts as the Host between them
+	 * Takes a model server and view server and acts as the controller between them
 	 *
 	 * @constructor
 	 * @param {string} storageUrl URL to the storage server
 	 * @param {string} viewUrl URL to the view server
 	 */
-	function Host(storageUrl, viewUrl) {
+	function Todo(storageUrl, viewUrl) {
 		// Call the local.Server constructor
 		local.Server.call(this);
 
@@ -40,7 +40,7 @@
 	}
 
 	// Inherit from the local.Server prototype
-	Host.prototype = Object.create(local.Server.prototype);
+	Todo.prototype = Object.create(local.Server.prototype);
 
 	/**
 	 * Generates a response to requests from within the application.
@@ -52,7 +52,7 @@
 	 * Requests sent by `local.dispatch()` to this server's address will arrive here along with a response object.
 	 * Request bodies may be streamed, so this function is called before the request finishes.
 	 */
-	Host.prototype.handleLocalRequest = function(req, res) {
+	Todo.prototype.handleLocalRequest = function(req, res) {
 		var self = this;
 		/*
 		Toplevel Resource
@@ -60,7 +60,7 @@
 		if (req.path == '/') {
 			// Set the link header
 			res.setHeader('link', [
-				{ href: '/', rel: 'self service collection', title: 'TodoSOA App Host' },
+				{ href: '/', rel: 'self service collection', title: 'TodoSOA App Todo' },
 				{ href: '/active', rel: 'item', id: 'active' },
 				{ href: '/completed', rel: 'item', id: 'completed' },
 				{ href: '/{id}', rel: 'item' },
@@ -94,7 +94,7 @@
 
 			// Set the link header
 			res.setHeader('link', [
-				{ href: '/', rel: 'up service collection', title: 'TodoSOA App Host' },
+				{ href: '/', rel: 'up service collection', title: 'TodoSOA App Todo' },
 				{ href: '/'+id, rel: 'self item', id: id }
 			]);
 
@@ -228,7 +228,7 @@
 	 * @param {number} id The id of the item to edit
 	 * @param {object} label The label you want to edit the text of
 	 */
-	Host.prototype.editItem = function (id) {
+	Todo.prototype.editItem = function (id) {
 		var li = $$('[data-id="' + id + '"]');
 		var label = li.querySelector('label');
 
@@ -292,7 +292,7 @@
 	 * Updates the pieces of the page which change depending on the remaining
 	 * number of todos.
 	 */
-	Host.prototype._updateCount = function () {
+	Todo.prototype._updateCount = function () {
 		var counts, self = this;
 		// Request a count from storage
 		this.storageApi.dispatch({ method: 'COUNT' })
@@ -323,7 +323,7 @@
 	 *
 	 * @param {object} todos Contains a count of all todos, and their statuses.
 	 */
-	Host.prototype._toggleFrame = function (todos) {
+	Todo.prototype._toggleFrame = function (todos) {
 		var frameDisplay = this.$main.style.display;
 		var frameVisible = frameDisplay === 'block' || frameDisplay === '';
 
@@ -342,7 +342,7 @@
 	 * Re-filters the todo items, based on the active route.
 	 * @param {boolean|undefined} force  forces a re-painting of todo items.
 	 */
-	Host.prototype._filter = function (force) {
+	Todo.prototype._filter = function (force) {
 		var activeRoute = this._activeRoute;
 
 		// Update the elements on the page, which change with each completed todo
@@ -364,7 +364,7 @@
 	/**
 	 * Simply updates the filter nav's selected states
 	 */
-	Host.prototype._updateFilterState = function () {
+	Todo.prototype._updateFilterState = function () {
 		var currentPage = this._getCurrentPage() || '';
 
 		// Store a reference to the active route, allowing us to re-filter todo
@@ -389,10 +389,10 @@
 	/**
 	 * A getter for getting the current page
 	 */
-	Host.prototype._getCurrentPage = function () {
+	Todo.prototype._getCurrentPage = function () {
 		return document.location.hash.split('/')[1];
 	};
 
 	// Export to window
-	window.app.Host = Host;
+	window.app.Todo = Todo;
 })(window);
