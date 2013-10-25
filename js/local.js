@@ -289,7 +289,7 @@ EventEmitter.prototype.playbackHistory = function() {
 	// always check if we're suspended - a handler might resuspend us
 	while (!this.isSuspended() && (e = this._history.shift()))
 		this.emit.apply(this, e);
-}
+};
 
 EventEmitter.prototype.emit = function(type) {
 	var args = Array.prototype.slice.call(arguments);
@@ -340,6 +340,8 @@ EventEmitter.prototype.once = function(type, listener) {
 		self.removeListener(type, g);
 		listener.apply(this, arguments);
 	});
+
+	return this;
 };
 
 EventEmitter.prototype.removeListener = function(type, listener) {
@@ -765,6 +767,7 @@ local.LINK_NOT_FOUND = 1;// Helpers
 // EXPORTED
 // takes parsed a link header and a query object, produces an array of matching links
 // - `links`: [object]/object, either the parsed array of links or the request/response object
+// - `query`: object
 local.queryLinks = function queryLinks(links, query) {
 	if (!links) return [];
 	if (links.parsedHeaders) links = links.parsedHeaders.link; // actually a request or response object
@@ -897,7 +900,7 @@ local.joinUrl = function joinUrl() {
 // EXPORTED
 // tests to see if a URL is absolute
 // - "absolute" means that the URL can reach something without additional context
-// - eg http://foo.com, //foo.com, httpl://bar.app, rel:http://foo.com, rel:foo.com
+// - eg http://foo.com, //foo.com, httpl://bar.app
 var isAbsUriRE = /^((http(s|l)?:)?\/\/)|((nav:)?\|\|)/;
 local.isAbsUri = function(url) {
 	if (isAbsUriRE.test(url))
@@ -1500,7 +1503,6 @@ Request.prototype = Object.create(local.util.EventEmitter.prototype);
 Request.prototype.setHeader    = function(k, v) { this.headers[k] = v; };
 Request.prototype.getHeader    = function(k) { return this.headers[k]; };
 Request.prototype.removeHeader = function(k) { delete this.headers[k]; };
-Request.prototype.finishStream = function() { return this.body_; };
 
 // causes the request/response to abort after the given milliseconds
 Request.prototype.setTimeout = function(ms) {
@@ -2153,7 +2155,6 @@ WorkerBridgeServer.prototype.onWorkerLog = function(message) {
 	// ===============
 	// EXPORTED
 	// server wrapper for WebRTC connections
-	// - currently only supports Chrome
 	// - `config.peer`: required string, who we are connecting to (a valid peer domain)
 	// - `config.relay`: required local.Relay
 	// - `config.initiate`: optional bool, if true will initiate the connection processes
@@ -2697,6 +2698,7 @@ WorkerBridgeServer.prototype.onWorkerLog = function(message) {
 	Relay.prototype.getDomain       = function() { return this.myPeerDomain; };
 	Relay.prototype.getUserId       = function() { return this.userId; };
 	Relay.prototype.getApp          = function() { return this.config.app; };
+	Relay.prototype.setApp          = function(v) { this.config.app = v; };
 	Relay.prototype.getStreamId     = function() { return this.config.stream; };
 	Relay.prototype.setStreamId     = function(stream) { this.config.stream = stream; };
 	Relay.prototype.getAccessToken  = function() { return this.accessToken; };
@@ -3231,10 +3233,8 @@ local.schemes.register('httpl', function(request, response) {
 				// Not a default stream miss
 				if (peerd.relay in __peer_relay_registry) {
 					// Try connecting to the peer
-					// console.log(peerd,'not found, connecting');
 					__peer_relay_registry[peerd.relay].connect(request.urld.authority);
 					server = local.getServer(request.urld.authority);
-					// console.log(server);
 				} else {
 					// We're not connected to the relay
 					server = localRelayNotOnlineServer;
@@ -4934,22 +4934,22 @@ Agent.prototype.notify = makeDispWBodySugar('NOTIFY');
 
 // Builder
 // =======
-local.agent = function(queryOrNav) {
-	if (queryOrNav instanceof Agent)
-		return queryOrNav;
+local.agent = function(query) {
+	if (query instanceof Agent)
+		return query;
 
 	// convert nav: uri to a query array
-	if (typeof queryOrNav == 'string' && local.isNavSchemeUri(queryOrNav))
-		queryOrNav = local.parseNavUri(queryOrNav);
+	if (typeof query == 'string' && local.isNavSchemeUri(query))
+		query = local.parseNavUri(query);
 
 	// make sure we always have an array
-	if (!Array.isArray(queryOrNav))
-		queryOrNav = [queryOrNav];
+	if (!Array.isArray(query))
+		query = [query];
 
 	// build a full follow() chain
-	var nav = new Agent(new AgentContext(queryOrNav.shift()));
-	while (queryOrNav[0]) {
-		nav = new Agent(new AgentContext(queryOrNav.shift()), nav);
+	var nav = new Agent(new AgentContext(query.shift()));
+	while (query[0]) {
+		nav = new Agent(new AgentContext(query.shift()), nav);
 	}
 
 	return nav;
@@ -5071,20 +5071,6 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
 		local.worker.config = message;
 	};
 
-	// Nullifies a global
-	PageServer.prototype.onPageNullify = function(message) {
-		if (!this.isHostPage) {
-			console.log('rejected "nullify" from non-host connection');
-			return;
-		}
-		console.log('nullifying: ' + message);
-		if (typeof message === 'string') {
-			self[message] = null; // destroy the top-level reference
-		} else {
-			throw new Error("'nullify' message must include a valid string");
-		}
-	};
-
 })();// Setup
 // =====
 local.util.mixinEventEmitter(local.worker);
@@ -5204,7 +5190,7 @@ function addConnection(port) {
 	page.channelSendMsg({ op: 'ready', body: { hostPrivileges: isHost } });
 
 	// Fire event
-	local.worker.emit('connect', { page: page });
+	local.worker.emit('connect', page);
 }
 
 // Setup for future connections (shared worker)
@@ -5235,9 +5221,6 @@ if (typeof this.local == 'undefined')
 // - `config.shared`: boolean, should the workerserver be shared?
 // - `config.namespace`: optional string, what should the shared worker be named?
 //   - defaults to `config.src` if undefined
-// - `config.nullify`: optional [string], a list of objects to nullify when the worker loads
-//   - defaults to ['XMLHttpRequest', 'Worker', 'WebSocket', 'EventSource']
-// - `config.bootstrapUrl`: optional string, specifies the URL of the worker bootstrap script
 // - `serverFn`: optional function, a response generator for requests from the worker
 local.spawnWorkerServer = function(src, config, serverFn) {
 	if (typeof config == 'function') { serverFn = config; config = null; }
