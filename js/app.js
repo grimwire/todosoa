@@ -24,13 +24,11 @@
 	Load the view server into a Web Worker.
 
 	ABOUT
-	local.spawnWorkerServer() the specified javascript file or data-uri into a worker. When loaded, the
-	worker is assigned an httpl:// address according to the script's filename. In this case, the worker
-	will be given the url `httpl://view.js`.
+	local.spawnWorkerServer() the specified javascript file or data-uri into a worker.
 
 	Note, any requests sent to httpl://view.js before it loads will be buffered and delivered when ready.
 	*/
-	local.spawnWorkerServer('js/view.js');
+	local.spawnWorkerServer('js/view.js', { domain: 'view.js' });
 
 	/*
 	Load the storage and main app host into the document.
