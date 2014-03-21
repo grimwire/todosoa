@@ -32,41 +32,38 @@ var whitelistAPIs_src = [ // nullifies all toplevel variables except those liste
 		'if (typeof console != "undefined") { console.log("Nullified: "+nulleds.join(", ")); }',
 	'})();\n'
 ].join('');
-var importScriptsPatch_src;
-if (typeof window != 'undefined') {
-	var host = window.location.protocol + '//' + window.location.host;
-	var hostDir = window.location.pathname.split('/').slice(0,-1).join('/');
-	var hostWithDir = host + hostDir;
-	importScriptsPatch_src = [ // patches importScripts() to allow relative paths despite the use of blob uris
-		'(function() {',
-			'var orgImportScripts = importScripts;',
-			'function joinRelPath(base, relpath) {',
-				'if (relpath.charAt(0) == \'/\') {',
-					'return "'+host+'" + relpath;',
-				'}',
-				'// totally relative, oh god',
-				'// (thanks to geoff parker for this)',
-				'var hostpath = "'+hostDir+'";',
-				'var hostpathParts = hostpath.split(\'/\');',
-				'var relpathParts = relpath.split(\'/\');',
-				'for (var i=0, ii=relpathParts.length; i < ii; i++) {',
-					'if (relpathParts[i] == \'.\')',
-						'continue; // noop',
-					'if (relpathParts[i] == \'..\')',
-						'hostpathParts.pop();',
-					'else',
-						'hostpathParts.push(relpathParts[i]);',
-				'}',
-				'return "'+host+'/" + hostpathParts.join(\'/\');',
+var importScriptsPatch_src = [ // patches importScripts() to allow relative paths despite the use of blob uris
+	'(function() {',
+		'var orgImportScripts = importScripts;',
+		'function joinRelPath(base, relpath) {',
+			'if (relpath.charAt(0) == \'/\') {',
+				'return "{{HOST}}" + relpath;',
 			'}',
-			'importScripts = function() {',
-				'return orgImportScripts.apply(null, Array.prototype.map.call(arguments, function(v, i) {',
-					'return (v.indexOf(\'/\') < v.indexOf(/[.:]/) || v.charAt(0) == \'/\' || v.charAt(0) == \'.\') ? joinRelPath(\''+hostWithDir+'\',v) : v;',
-				'}));',
-			'};',
-		'})();\n'
-	].join('\n');
-} else { importScriptsPatch_src = ''; }
+			'// totally relative, oh god',
+			'// (thanks to geoff parker for this)',
+			'var hostpath = "{{HOST_DIR_PATH}}";',
+			'var hostpathParts = hostpath.split(\'/\');',
+			'var relpathParts = relpath.split(\'/\');',
+			'for (var i=0, ii=relpathParts.length; i < ii; i++) {',
+				'if (relpathParts[i] == \'.\')',
+					'continue; // noop',
+				'if (relpathParts[i] == \'..\')',
+					'hostpathParts.pop();',
+				'else',
+					'hostpathParts.push(relpathParts[i]);',
+			'}',
+			'return "{{HOST}}/" + hostpathParts.join(\'/\');',
+		'}',
+		'var isImportingAllowed = true;',
+		'setTimeout(function() { isImportingAllowed = false; },0);', // disable after initial run
+		'importScripts = function() {',
+			'if (!isImportingAllowed) { throw "Local.js - Imports disabled after initial load to prevent data-leaking"; }',
+			'return orgImportScripts.apply(null, Array.prototype.map.call(arguments, function(v, i) {',
+				'return (v.indexOf(\'/\') < v.indexOf(/[.:]/) || v.charAt(0) == \'/\' || v.charAt(0) == \'.\') ? joinRelPath(\'{{HOST_DIR_URL}}\',v) : v;',
+			'}));',
+		'};',
+	'})();\n'
+].join('\n');
 
 module.exports = {
 	logAllExceptions: false,
@@ -369,6 +366,24 @@ function any(ps) {
 	});
 }
 
+// takes a function and executes it in a Promise context
+function lift(fn) {
+	var newValue;
+	try { newValue = fn(); }
+	catch (e) {
+		if (localConfig.logAllExceptions || e instanceof Error) {
+			if (console.error)
+				console.error(e, e.stack);
+			else console.log("Promise exception thrown", e, e.stack);
+		}
+		return promise().reject(e);
+	}
+
+	if (isPromiselike(newValue))
+		return newValue;
+	return promise(newValue);
+}
+
 // promise creator
 // - behaves like a guard, ensuring `v` is a promise
 // - if multiple arguments are given, will provide a promise that encompasses all of them
@@ -394,6 +409,7 @@ module.exports = {
 promise.bundle = bundle;
 promise.all = all;
 promise.any = any;
+promise.lift = lift;
 },{"./config.js":1,"./util":9}],5:[function(require,module,exports){
 // Standard DOM Events
 // ===================
@@ -819,7 +835,8 @@ function extractRequestPayload(targetElem, form, opts) {
 		if (elem.tagName === 'BUTTON') {
 			if (isSubmittingElem) {
 				// don't pull from buttons unless recently clicked
-				data[elem.name] = elem.value;
+				// but, when we do, make sure it's the definitive value (it takes precedence in name collisions)
+				Object.defineProperty(data, elem.name, { configurable: true, enumerable: true, writable: false, value: elem.value });
 			}
 		} else if (elem.tagName === 'INPUT') {
 			switch (elem.type.toLowerCase()) {
@@ -827,7 +844,8 @@ function extractRequestPayload(targetElem, form, opts) {
 				case 'submit':
 					if (isSubmittingElem) {
 						// don't pull from buttons unless recently clicked
-						data[elem.name] = elem.value;
+						// but, when we do, make sure it's the definitive value (it takes precedence in name collisions)
+						Object.defineProperty(data, elem.name, { configurable: true, enumerable: true, writable: false, value: elem.value });
 					}
 					break;
 				case 'checkbox':
@@ -2642,7 +2660,7 @@ function pipe(target, source, headersCB, bodyCb) {
 	headersCB = headersCB || function(v) { return v; };
 	bodyCb = bodyCb || function(v) { return v; };
 	return promise(source)
-		.succeed(function(source) {
+		.always(function(source) {
 			if (!target.status) {
 				// copy the header if we don't have one yet
 				target.writeHead(source.status, source.reason, headersCB(source.headers));
@@ -2662,13 +2680,6 @@ function pipe(target, source, headersCB, bodyCb) {
 				target.end();
 			}
 			return target;
-		})
-		.fail(function(source) {
-			var ctype = source.headers['content-type'] || 'text/plain';
-			var body = (ctype && source.body) ? source.body : '';
-			target.writeHead(502, 'bad gateway', {'content-type':ctype});
-			target.end(body);
-			throw source;
 		});
 }
 
@@ -5863,7 +5874,6 @@ var BridgeServer = require('./bridge-server.js');
 // wrapper for servers run within workers
 // - `config.src`: optional URL, required unless `config.domain` is given
 // - `config.domain`: optional hostname, required with a source-path unless `config.src` is given
-//   - overwritten by addServer
 // - `config.serverFn`: optional function to replace handleRemoteRequest
 // - `config.shared`: boolean, should the workerserver be shared?
 // - `config.namespace`: optional string, what should the shared worker be named?
@@ -5885,7 +5895,11 @@ function WorkerBridgeServer(config) {
 
 	var src_ = promise();
 	if (config.src) {
-		src_.fulfill(config.src);
+		if (config.src.indexOf('blob:') === 0) {
+			src_.fulfill(config.src);
+		} else {
+			loadScript(config.src);
+		}
 	}
 	else if (config.domain) {
 		// No src? Try fetching from sourcepath
@@ -5893,32 +5907,54 @@ function WorkerBridgeServer(config) {
 		if (domaind.srcPath) {
 			// :WARN: in FF, Workers created by Blobs have been known to fail with a CSP script directive set
 			// https://bugzilla.mozilla.org/show_bug.cgi?id=964276
-			var src_url = helpers.joinUri(domaind.host, domaind.srcPath);
-			var full_src_url = 'https://'+src_url;
-			local.GET(full_src_url)
-				.fail(function(res) {
-					if (res.status === 0 || res.status == 404) {
-						// Not found? Try again without ssl
-						full_src_url = 'http://'+src_url;
-						return local.GET(full_src_url);
-					}
-					throw res;
-				})
-				.then(function(res) {
-					// Create worker
-					var bootstrap_src = require('../config.js').workerBootstrapScript;
-					var script_blob = new Blob([bootstrap_src+'(function(){'+res.body+'; if (main) { self.main = main; }})();'], { type: "text/javascript" });
-					config.src = window.URL.createObjectURL(script_blob);
-					src_.fulfill(config.src);
-				})
-				.fail(function(res) {
-					src_.reject(null);
-					self.terminate(404, 'Worker Not Found');
-				});
+			loadScript(helpers.joinUri(domaind.host, domaind.srcPath));
+		} else {
+			src_.reject(null);
+			this.terminate(404, 'Worker Not Properly Constructed');
+			throw "Worker incorrectly constructed without src or a domain with a source-path";
 		}
 	}
 
-	src_.then(function() {
+	function loadScript(url) {
+		var urld = local.parseUri(url);
+		if (!urld.authority || urld.authority == '.' || urld.authority.indexOf('.') === -1) {
+			var dir = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+			var dirurl = window.location.protocol + '//' + window.location.hostname + dir;
+			url = helpers.joinRelPath(dirurl, url);
+			urld = local.parseUri(url);
+		}
+		var full_url = (!urld.protocol) ? 'https://'+url : url;
+		local.GET(full_url)
+			.fail(function(res) {
+				if (!urld.protocol && (res.status === 0 || res.status == 404)) {
+					// Not found? Try again without ssl
+					full_url = 'http://'+url;
+					return local.GET(full_url);
+				}
+				throw res;
+			})
+			.then(function(res) {
+				// Setup the bootstrap source to import scripts relative to the origin
+				var bootstrap_src = require('../config.js').workerBootstrapScript;
+				var hosturld = local.parseUri(full_url);
+				var hostroot = hosturld.protocol + '://' + hosturld.authority;
+				bootstrap_src = bootstrap_src.replace(/\{\{HOST\}\}/g, hostroot);
+				bootstrap_src = bootstrap_src.replace(/\{\{HOST_DIR_PATH\}\}/g, hosturld.directory.slice(0,-1));
+				bootstrap_src = bootstrap_src.replace(/\{\{HOST_DIR_URL\}\}/g, hostroot + hosturld.directory.slice(0,-1));
+
+				// Create worker
+				var script_blob = new Blob([bootstrap_src+'(function(){'+res.body+'; if (main) { self.main = main; }})();'], { type: "text/javascript" });
+				src_.fulfill(window.URL.createObjectURL(script_blob));
+			})
+			.fail(function(res) {
+				src_.reject(null);
+				self.terminate(404, 'Worker Not Found');
+			});
+	}
+
+	src_.then(function(src) {
+		self.config.src = src;
+
 		// Prep config
 		if (!self.config.domain) { // assign a temporary label for logging if no domain is given yet
 			self.config.domain = '<'+self.config.src.slice(0,40)+'>';
@@ -5927,10 +5963,10 @@ function WorkerBridgeServer(config) {
 
 		// Initialize the worker
 		if (self.config.shared) {
-			self.worker = new SharedWorker(config.src, config.namespace);
+			self.worker = new SharedWorker(src, config.namespace);
 			self.worker.port.start();
 		} else {
-			self.worker = new Worker(config.src);
+			self.worker = new Worker(src);
 		}
 
 		// Setup the incoming message handler
@@ -5972,6 +6008,9 @@ WorkerBridgeServer.prototype.getPort = function() {
 WorkerBridgeServer.prototype.terminate = function(status, reason) {
 	BridgeServer.prototype.terminate.call(this, status, reason);
 	if (this.worker) this.worker.terminate();
+	if (this.config.src.indexOf('blob:') === 0) {
+		window.URL.revokeObjectURL(this.config.src);
+	}
 	this.worker = null;
 	this.isActive = false;
 };
@@ -6072,6 +6111,7 @@ module.exports = {};
 if (typeof self != 'undefined' && typeof self.window == 'undefined') {
 
 	var util = require('../util');
+	var schemes = require('../web/schemes.js');
 	var httpl = require('../web/httpl.js');
 	var WorkerConfig = require('./config.js');
 	var PageBridgeServer = require('./page-bridge-server.js');
@@ -6123,6 +6163,12 @@ if (typeof self != 'undefined' && typeof self.window == 'undefined') {
 			return JSON.stringify(data);
 		return data;
 	}
+
+	// INTERNAL
+	// set the http/s schemes to report disabled
+	schemes.register(['http', 'https'], function(req, res) {
+		res.writeHead(0, 'XHR Not Allowed in Workers for Security Reasons').end();
+	});
 
 	// EXPORTED
 	// btoa shim
@@ -6210,7 +6256,7 @@ if (typeof self != 'undefined' && typeof self.window == 'undefined') {
 		addConnection(self);
 	}
 }
-},{"../util":9,"../web/httpl.js":16,"./config.js":26,"./page-bridge-server.js":28}],28:[function(require,module,exports){
+},{"../util":9,"../web/httpl.js":16,"../web/schemes.js":21,"./config.js":26,"./page-bridge-server.js":28}],28:[function(require,module,exports){
 var util = require('../util');
 var workerConfig = require('./config.js');
 var BridgeServer = require('../web/bridge-server.js');

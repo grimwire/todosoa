@@ -1,4 +1,4 @@
-importScripts('local.js');
+importScripts('./local.js');
 
 var listItemTemplate
 =	'<li data-id="{{item_id}}" class="{{completed}}">'
@@ -9,16 +9,9 @@ var listItemTemplate
 +		'</div>'
 +	'</li>';
 
-/*
-Set a server for the worker.
 
-ABOUT
-Any request sent to the worker from the page will arrive here for fulfillment.
-
-SharedWorkers can have multiple pages. Therefore, a third parameter (`page`) is passed with a PageConnection object
-representing the origin of the request. If a worker is not shared, it can ignore the parameter.
-*/
-local.worker.setServer(function (req, res, page) {
+// Define a server for the worker.
+function main(req, res) {
 	/*
 	This server provides a set of templates which are rendered with GET requests. If an application wanted to implement
 	caching, it could add the appropriate headers to the response and store renders in the dispatch wrapper.
@@ -92,4 +85,4 @@ local.worker.setServer(function (req, res, page) {
 		default:
 			res.writeHead(404, 'not found').end();
 	}
-});
+}

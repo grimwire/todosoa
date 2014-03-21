@@ -2,14 +2,7 @@
 (function (window) {
 	'use strict';
 
-	/**
-	 * Creates a new client side storage object and will create an empty
-	 * collection if no collection already exists.
-	 *
-	 * @param {string} name The name of our DB we want to use
-	 * @param {function} callback Our fake DB uses callbacks because in
-	 * real life you probably would be making AJAX calls
-	 */
+	// Local storage server
 	function Store(name, callback) {
 		// Call the local.Server constructor
 		local.Server.call(this);
@@ -17,55 +10,24 @@
 		var dbName;
 
 		callback = callback || function () {};
-
 		dbName = this._dbName = name;
-
 		if (!localStorage[dbName]) {
-			data = {
-				todos: []
-			};
-
+			data = { todos: [] };
 			localStorage[dbName] = JSON.stringify(data);
 		}
-
 		callback.call(this, JSON.parse(localStorage[dbName]));
 	}
 
 	// Inherit from the local.Server prototype
 	Store.prototype = Object.create(local.Server.prototype);
 
-	/**
-	 * Generates a response to requests from within the application.
-	 *
-	 * @param {local.Request} req The request stream
-	 * @param {local.Response} req The response stream
-	 *
-	 * ABOUT
-	 * Requests sent by `local.dispatch()` to this server's address will arrive here along with a response object.
-	 * Request bodies may be streamed, so this function is called before the request finishes.
-	 */
+	// Generates a response to requests from within the application.
 	Store.prototype.handleLocalRequest = function(req, res) {
 		/*
 		Toplevel Resource
 		*/
 		if (req.path == '/') {
-			/*
-			Set the link header
-
-			ABOUT
-			The link header has de/serialization functions registered in `local.httpHeaders`, allowing you to set the
-			header in object or string format. When serialized, the header will look like this:
-
-			Link: </{?completed}>; rel="self service collection"; title="TodoSOA Storage", </{id}>; rel="item"
-
-			Local supports the URI Template spec in the `href` value of links, allowing servers to specify parameters
-			rather than precise values. If a `local.Agent` queries with { rel: 'item', id: 'listitem' }, the `id` will
-			match the token and fill in the value. Link headers are order-significant, so it's common to put links with
-			specific values at top, then put the URI Templated links beneath.
-
-			Note that Local will automatically prepend the domain to the URLs provided in links if they are given as
-			relative paths.
-			*/
+			// Set headers
 			res.setHeader('link', [
 				{ href: '/{?completed}', rel: 'self service collection', title: 'TodoSOA Storage' },
 				{ href: '/{id}', rel: 'item' }
@@ -115,17 +77,6 @@
 
 				case 'POST':
 					// Add a new item
-
-					/*
-					Wait until the stream has finished.
-
-					ABOUT
-					Requests are send to servers before their content has been delivered. If you want to handle each
-					chunk as it arrives, you can subscribe to the 'data' event.
-
-					The Request object automatically buffers the streamed content and deserializes it when the stream finishes.
-					The parsing is handled by `local.contentTypes`, which selects the parser according to the Content-Type header.
-					*/
 					req.on('end', (function() {
 						this.save(req.body, function(newTodo) {
 							res.writeHead(201, 'created', { location: '/'+newTodo.id }).end();
@@ -148,15 +99,10 @@
 		Item Resource
 		*/
 		else {
-			/*
-			Extract the id from the request path.
-
-			ABOUT
-			The req.path parameter will always start with a '/', even if nothing follows the slash.
-			*/
+			// Extract the id from the request path.
 			var id = req.path.slice(1);
 
-			// Set the link header
+			// Set headers
 			res.setHeader('link', [
 				{ href: '/{?completed}', rel: 'up service collection', title: 'TodoSOA Storage' },
 				{ href: '/'+id, rel: 'self item', id: id }
@@ -203,19 +149,7 @@
 		}
 	};
 
-	/**
-	 * Finds items based on a query given as a JS object
-	 *
-	 * @param {object} query The query to match against (i.e. {foo: 'bar'})
-	 * @param {function} callback	 The callback to fire when the query has
-	 * completed running
-	 *
-	 * @example
-	 * db.find({foo: 'bar', hello: 'world'}, function (data) {
-	 *	 // data will return any items that have foo: bar and
-	 *	 // hello: world in their properties
-	 * });
-	 */
+	// Finds items based on a query given as a JS object
 	Store.prototype.find = function (query, callback) {
 		if (!callback) {
 			return;
@@ -234,24 +168,14 @@
 		}));
 	};
 
-	/**
-	 * Will retrieve all data from the collection
-	 *
-	 * @param {function} callback The callback to fire upon retrieving data
-	 */
+	// Will retrieve all data from the collection
 	Store.prototype.findAll = function (callback) {
 		callback = callback || function () {};
 		callback.call(this, JSON.parse(localStorage[this._dbName]).todos);
 	};
 
-	/**
-	 * Will save the given data to the DB. If no item exists it will create a new
-	 * item, otherwise it'll simply update an existing item's properties
-	 *
-	 * @param {number} id An optional param to enter an ID of an item to update
-	 * @param {object} data The data to save back into the DB
-	 * @param {function} callback The callback to fire after saving
-	 */
+	// Will save the given data to the DB. If no item exists it will create a new
+	// item, otherwise it'll simply update an existing item's properties
 	Store.prototype.save = function (id, updateData, callback) {
 		var data = JSON.parse(localStorage[this._dbName]);
 		var todos = data.todos;
@@ -284,12 +208,7 @@
 		}
 	};
 
-	/**
-	 * Will remove an item from the Store based on its ID
-	 *
-	 * @param {number} id The ID of the item you want to remove
-	 * @param {function} callback The callback to fire after saving
-	 */
+	// Will remove an item from the Store based on its ID
 	Store.prototype.remove = function (id, callback) {
 		var data = JSON.parse(localStorage[this._dbName]);
 		var todos = data.todos;
@@ -305,11 +224,7 @@
 		callback.call(this, JSON.parse(localStorage[this._dbName]).todos);
 	};
 
-	/**
-	 * Will drop all storage and start fresh
-	 *
-	 * @param {function} callback The callback to fire after dropping the data
-	 */
+	// Will drop all storage and start fresh
 	Store.prototype.drop = function (callback) {
 		localStorage[this._dbName] = JSON.stringify({todos: []});
 		callback.call(this, JSON.parse(localStorage[this._dbName]).todos);

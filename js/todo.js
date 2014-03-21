@@ -2,13 +2,7 @@
 (function (window) {
 	'use strict';
 
-	/**
-	 * Takes a model server and view server and acts as the controller between them
-	 *
-	 * @constructor
-	 * @param {string} storageUrl URL to the storage server
-	 * @param {string} viewUrl URL to the view server
-	 */
+	// Takes a model server and view server and acts as the controller between them
 	function Todo(storageUrl, viewUrl) {
 		// Call the local.Server constructor
 		local.Server.call(this);
@@ -42,16 +36,7 @@
 	// Inherit from the local.Server prototype
 	Todo.prototype = Object.create(local.Server.prototype);
 
-	/**
-	 * Generates a response to requests from within the application.
-	 *
-	 * @param {local.Request} req The request stream
-	 * @param {local.Response} req The response stream
-	 *
-	 * ABOUT
-	 * Requests sent by `local.dispatch()` to this server's address will arrive here along with a response object.
-	 * Request bodies may be streamed, so this function is called before the request finishes.
-	 */
+	// Generates a response to requests from within the application.
 	Todo.prototype.handleLocalRequest = function(req, res) {
 		var self = this;
 		/*
@@ -119,18 +104,7 @@
 					this.storageApi.dispatch({ method: 'GET', query: query })
 						.then(function(res2) {
 							var items = res2.body;
-							/*
-							Send render GET requests for each item
-
-							ABOUT
-							Whenever multiple requests need to be coordinated, you can add them to an array and call one of the
-							bundling functions. The resulting promise will be a fulfilled or rejected with an array containing
-							all of the responses.
-							- `local.promise.bundle()`: always fulfills the resulting promise, regardless of whether each promise
-							   succeeds or fails.
-							- `local.promise.all()`: only fulfills the resulting promise if all of the contained promises succeed.
-							- `local.promise.any()`: fulfills the resulting promise if any of the contained promises succeed.
-							*/
+							// Send render GET requests for each item
 							var responses_ = [];
 							items.forEach(function(item) {
 								var query = { item_id: item.id, title: item.title, completed: item.completed };
